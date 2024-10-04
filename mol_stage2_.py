@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3,6,7' ##################################################
+os.environ['CUDA_VISIBLE_DEVICES'] = '3,6,7' 
 import torch
 from torch.utils import data
 import argparse
@@ -8,7 +8,6 @@ import pytorch_lightning as pl
 from pytorch_lightning import Trainer, strategies, LightningDataModule
 import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
-#from data_provider.stage2_dm import Stage2DM
 from data_provider.d2_d3_dataset import *
 from model.unimol import SimpleUniMolModel
 from model.mol_blip2_stage2_ import Blip2Stage2
@@ -18,10 +17,7 @@ import pickle
 
 import sys
 
-#os.environ['OPENBLAS_NUM_THREADS'] = '1'
-## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
-## for A100 gpus
 torch.set_float32_matmul_precision('medium')
 
 
