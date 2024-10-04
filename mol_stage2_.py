@@ -1,8 +1,5 @@
 import os
-# os.environ['CUDA_LAUNCH_BLOCKING'] = "1" ##################################################
 os.environ['CUDA_VISIBLE_DEVICES'] = '3,6,7' ##################################################
-# os.environ['CUDA_VISIBLE_DEVICES'] = '4' ##################################################
-#os.environ["TORCH_USE_CUDA_DSA"] = '4' ##################################################
 import torch
 from torch.utils import data
 import argparse
@@ -34,7 +31,7 @@ class Stage2DM(LightningDataModule):
             mode: str = 'pretrain',
             num_workers: int = 0,
             batch_size: int = 256,
-            root: str = '/data/project/sumin/moleculeText/3D-MoLM/data_provider/ChEBI20',
+            root: str = './data_preprocess/PubChem_MAT',
             text_max_len: int = 128,
             pad_to_multipe: int = 8,
             dictionary=None,
@@ -46,35 +43,19 @@ class Stage2DM(LightningDataModule):
         self.mode = mode
         self.batch_size = batch_size
         self.pad_to_multiple = pad_to_multipe
-#        print(f'check args: {args}')
         self.inference_batch_size = args.inference_batch_size
         self.num_workers = num_workers
         self.text_max_len = text_max_len
-        # self.prompt = "Below is an instruction that describes a task, paired with an input molecule. Write a response that appropriately completes the request.\n" \
-        #               "Instruction: Describe the input molecule.\n" \
-        #               "Input molecule: {} <mol><mol><mol><mol><mol><mol><mol><mol>.\n" \
-        #               "Response: "
-        # if self.args.num_query_token == 12:
-        #     self.prompt = "Below is an instruction that describes a task, paired with an input molecule. Write a response that appropriately completes the request.\n" \
-        #                   "Instruction: Describe the input molecule.\n" \
-        #                   "Input molecule: {} <mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol>.\n" \
-        #                   "Response: "
-        # elif self.args.num_query_token == 24:        
         self.prompt = "Below is an instruction that describes a task, paired with an input molecule. Write a response that appropriately completes the request.\n" \
                       "Instruction: Describe the input molecule.\n" \
                       "Input molecule: {} <mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol><mol>.\n" \
                       "Response: "
-        # else:
-        #     print(f'num_query_token were not properly given : {self.args.num_query_token}')
-        #     sys.exit()
         
         self.dictionary = dictionary
        # print(args)
         if self.mode in ['pretrain', 'test']:
-            # self.train_dataset = MolDataset(root + '/pretrain/', text_max_len, unimol_dict=dictionary, max_atoms=args.unimol_max_atoms, prompt=self.prompt, return_prompt=True, enriched_descrption=args.enriched_descrption).shuffle()
             print('LOADING PUBCHEM DATASET...')
             
-            root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT' ####
             self.train_dataset = pt_MolDataset(root+'/val/', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, self.prompt, return_prompt=True, enriched_description=args.enriched_description).shuffle()
             print('Pretrain dataset is loaded')
             
@@ -85,10 +66,7 @@ class Stage2DM(LightningDataModule):
             print('Test dataset match is loaded')
 
         if self.mode == 'ft':
-            # self.train_dataset = MolDataset(root + '/pretrain/', text_max_len, unimol_dict=dictionary, max_atoms=args.unimol_max_atoms, prompt=self.prompt, return_prompt=True, enriched_descrption=args.enriched_descrption).shuffle()
             print('LOADING PUBCHEM DATASET...')
-            
-            root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT' ####
             self.train_dataset = pt_MolDataset(root+'/train/', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, self.prompt, return_prompt=True, enriched_description=args.enriched_description).shuffle()
             print('Pretrain dataset is loaded')
             
@@ -100,10 +78,8 @@ class Stage2DM(LightningDataModule):
 
 
         elif self.mode == 'eval':
-            # self.train_dataset = MolDataset(root + '/pretrain/', text_max_len, unimol_dict=dictionary, max_atoms=args.unimol_max_atoms, prompt=self.prompt, return_prompt=True, enriched_descrption=args.enriched_descrption).shuffle()
             print('LOADING PUBCHEM DATASET...')
             
-            root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem' ####
             self.train_dataset = pt_MolDataset(root+'/pretrain/', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, self.prompt, return_prompt=True, enriched_description=args.enriched_description).shuffle()
             print('Pretrain dataset is loaded')
             
@@ -113,18 +89,6 @@ class Stage2DM(LightningDataModule):
             self.test_dataset = pt_MolDataset(root + '/test/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary, max_atoms=args.unimol_max_atoms, prompt=self.prompt, return_prompt=True, enriched_description=args.enriched_description).shuffle()
             print('Test dataset match is loaded')
             
-        # elif self.mode == 'test':
-        #     print('only bring test dataset: PUBCHEM')
-        #     root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT'
-        #     self.test_dataset = pt_MolDataset(root + '/test/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary, max_atoms=args.unimol_max_atoms, prompt=self.prompt, return_prompt=True, enriched_description=args.enriched_description).shuffle()
-        #     print('Test dataset match is loaded')
-            
-        # else:
-        #     print('LOADING CHEBI DATASET...')
-        #     self.train_dataset = pt_MolDataset(root+'/train_2d_3d.pt', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, self.prompt, return_prompt=True).shuffle()
-        #     self.val_dataset = pt_MolDataset(root + '/val_2d_3d.pt', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, self.prompt, return_prompt=True).shuffle()
-        #     self.test_dataset = pt_MolDataset(root + '/test_2d_3d.pt',  tokenizer, text_max_len, dictionary, args.unimol_max_atoms, self.prompt, return_prompt=True).shuffle()
-    
         self.init_tokenizer(tokenizer)
 
     def init_tokenizer(self, tokenizer):
@@ -182,7 +146,6 @@ def main(args):
 
     if len(args.devices.split(',')) > 1:
 
-        # print('DEEPSPEED') ##################################################################
         if args.strategy_name == 'deepspeed':
             print('deepspeed')
             strategy = MyDeepSpeedStrategy(stage=2)
@@ -190,8 +153,6 @@ def main(args):
             print('deepspeed_else')
             strategy = strategies.DDPStrategy(start_method='spawn')
     else:
-
-        # print('AUTO') ##################################################################
         strategy = 'auto'
         args.devices = eval(args.devices)
         
@@ -207,11 +168,9 @@ def main(args):
         print(f"loaded stage2 model from {args.stage2_path}")
     elif args.stage1_path:
         print('Loading from stage1_path')
-        # print(args) ##################################################
         model = Blip2Stage2(args)
         print(f"loading stage1 model from {args.stage1_path}")
         model.load_from_stage1_checkpoint(args.stage1_path)
-        # model.load_from_stage1_checkpoint('/home/kjh/kjh_dir/3d-MoLM/all_checkpoints/stage1_pretrain/ckpt_version_5/epoch=49.ckpt')
     else:
         model = Blip2Stage2(args)
 
@@ -229,19 +188,7 @@ def main(args):
                                          save_top_k=-1,
                                          save_on_train_epoch_end=True))
     
-    # if len(args.devices.split(',')) > 1:
-
-    #     # print('DEEPSPEED') ##################################################################
-    #     if args.strategy_name == 'deepspeed':
-    #         strategy = MyDeepSpeedStrategy(stage=2)
-    #     else:
-    #         strategy = strategies.DDPStrategy(start_method='spawn')
-    # else:
-
-    #     # print('AUTO') ##################################################################
-    #     strategy = 'auto'
-    #     args.devices = eval(args.devices)
-        
+    
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
 
     trainer = Trainer(
@@ -278,7 +225,6 @@ def get_args():
     # MM settings
     parser.add_argument('--mode', type=str, default='ft')
     parser.add_argument('--strategy_name', type=str, default='deepspeed')
-#    parser.add_argument('--use_3d', action='store_true', default=True)
     parser.add_argument('--enriched_description', action='store_true', default=False)
     parser.add_argument('--accelerator', type=str, default='gpu')
     parser.add_argument('--devices', type=str, default='1')
@@ -288,22 +234,15 @@ def get_args():
     parser.add_argument('--check_val_every_n_epoch', type=int, default=2)
     parser.add_argument('--enable_flash', action='store_true', default=True)
     parser.add_argument('--agg_method', type=str, default='concat')
-    parser.add_argument('--batch_size', type=int, default=5) ##############
-    parser.add_argument('--text_max_len', type=int, default=512) ##############
+    parser.add_argument('--batch_size', type=int, default=5) 
+    parser.add_argument('--text_max_len', type=int, default=512) 
     parser.add_argument('--inference_batch_size', type=int, default=8)
     
     parser = Blip2Stage2.add_model_specific_args(parser)
-#    parser = Stage2DM.add_model_specific_args(parser)
     parser = SimpleUniMolModel.add_args(parser)
     args = parser.parse_args()
     args.num_workers = 4
-    # args.batch_size = 10 #######
-    args.root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT' ####
- #'/data/project/sumin/moleculeText/3D-MoLM/data_provider/ChEBI20'
-    # args.text_max_len = 256 ######
-#    args.inference_batch_size = 1
-    # args.stage1_path = '/data/project/sumin/moleculeText/molMDiGL/all_checkpoints/stage1/epoch=19-v1.ckpt'
-    #args.num_query_token = 20
+    args.root = './data_preprocess/PubChem_MAT' 
     if args.enable_flash:
         replace_llama_attn_with_flash_attn()
     print("=========================================")
@@ -311,8 +250,6 @@ def get_args():
         print(k, '=', v)
     print("=========================================")
 
-    # print('ARGS') #########################################################
-    # print(args) #########################################################
     return args
 
 
