@@ -10,7 +10,6 @@ import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from model.mol_blip2_stage1_ablation import Blip2Stage1
 from model.unimol import SimpleUniMolModel
-#from data_provider.stage1_dm import Stage1DM
 from model.dist_funs import MyDeepSpeedStrategy
 from pytorch_lightning import LightningDataModule
 from transformers import AutoTokenizer, AutoModel, BertConfig
@@ -20,9 +19,7 @@ from torch_geometric.data import (Data, Dataset, DataLoader, InMemoryDataset, do
 from data_provider.d2_d3_dataset import *
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
-## for pyg bug
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
-## for A100 gpus
 torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
@@ -32,7 +29,7 @@ class Stage1DM(LightningDataModule):
         self,
         num_workers = 0,
         batch_size = 256,
-        root = '/data/project/sumin/moleculeText/3D-MoLM/data_provider/ChEBI20',
+        root = './data_preprocess/PubChem_MAT',
         text_max_len = 128,
         pad_to_multiple = 8,
         dictionary=None,
@@ -49,7 +46,6 @@ class Stage1DM(LightningDataModule):
 
         
         if args.mode == 'pretrain':
-            root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT' #### MAT 2d dataset
             self.train_dataset = pt_MolDataset(root+'/pretrain/', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, enriched_description=args.enriched_description).shuffle()
             print('Pretrain dataset is loaded')
             self.val_dataset = pt_MolDataset(root + '/val/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
@@ -59,7 +55,6 @@ class Stage1DM(LightningDataModule):
             self.test_dataset_match = pt_MolDataset(root + '/test/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
             print('Test dataset match is loaded')
         elif args.mode in ['ft', 'train']:
-            root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT' #### MAT 2d dataset
             self.train_dataset = pt_MolDataset(root+'/train/', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, enriched_description=args.enriched_description).shuffle()
             print('Train dataset is loaded')
             self.val_dataset = pt_MolDataset(root + '/val/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
@@ -69,7 +64,6 @@ class Stage1DM(LightningDataModule):
             self.test_dataset_match = pt_MolDataset(root + '/test/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
             print('Test dataset match is loaded')
         elif args.mode == 'eval':
-            root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT' #### MAT 2d dataset
             self.train_dataset = pt_MolDataset(root+'/val/', tokenizer, text_max_len, dictionary, args.unimol_max_atoms, enriched_description=args.enriched_description).shuffle()
             print('Train(val) dataset is loaded')
             self.val_dataset = pt_MolDataset(root + '/val/', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
@@ -81,11 +75,6 @@ class Stage1DM(LightningDataModule):
         else:
             print('Enter proper value for args.mode')
             sys.exit()
-            # self.train_dataset = pt_MolDataset(root+'/train_2d_3d.pt', tokenizer, text_max_len, dictionary).shuffle()
-            # print('Train dataset is loaded')
-            # self.val_dataset = pt_MolDataset(root + '/val_2d_3d.pt', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
-            # self.val_dataset_match = pt_MolDataset(root + '/val_2d_3d.pt', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
-            # self.test_dataset_match = pt_MolDataset(root + '/test_2d_3d.pt', tokenizer = tokenizer, text_max_len = text_max_len, unimol_dict=dictionary).shuffle()
 
         self.val_match_loader = data.DataLoader(self.val_dataset_match, 
                                            batch_size=self.match_batch_size,
@@ -203,9 +192,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser = Blip2Stage1.add_model_specific_args(parser)  # add model args
-#    parser = Stage1DM.add_model_specific_args(parser)
-#    parser = add_gnn_model_specific_args(parser)
+    parser = Blip2Stage1.add_model_specific_args(parser)  
     parser = SimpleUniMolModel.add_args(parser)
 
     parser.add_argument('--filename', type=str, default="stage1")
@@ -219,7 +206,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--mode', type=str, default='pretrain')
     parser.add_argument('--strategy_name', type=str, default='deepspeed')
-    # parser.add_argument('--use_3d', action='store_true', default=False)
     parser.add_argument('--enriched_description', action='store_true', default=False)
     parser.add_argument('--accelerator', type=str, default='gpu')
     parser.add_argument('--devices', type=str, default='1')
@@ -239,8 +225,7 @@ if __name__ == '__main__':
 
     args.graph_pooling = 'sum'
     args.num_workers = 4
-    # args.root = '/data/project/sumin/moleculeText/3D-MoLM/data_provider/ChEBI20/'
-    args.root = '/home/kjh/kjh_dir/3d-MoLM/0415_project/data_preprocess/PubChem_MAT'
+    args.root = './data_preprocess/PubChem_MAT'
     args.text_max_len = 256
     # args.text_max_len = 600
     args.match_batch_size = 32
