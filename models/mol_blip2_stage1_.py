@@ -34,8 +34,6 @@ class Blip2Stage1(pl.LightningModule):
         self.save_hyperparameters(args)
     
     def maybe_autocast(self, dtype=torch.float16):
-        # if on cpu, don't use autocast
-        # if on gpu, use autocast with dtype if provided, otherwise use torch.float16
         enable_autocast = self.device != torch.device("cpu")
 
         if enable_autocast:
@@ -62,10 +60,6 @@ class Blip2Stage1(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
 
         batch_size = batch[0][0].size(0)
-        # if self.args.use_3d:
-        #     batch_size = batch[0][0].size(0)
-        # else:
-        #     batch_size = len(batch[0])
         blip2_loss = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
         self.log("val_loss_gtc", float(blip2_loss.loss_itc), batch_size=batch_size, sync_dist=True, on_epoch = True) # on step delete
@@ -85,7 +79,7 @@ class Blip2Stage1(pl.LightningModule):
                 g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20,\
                 graph_rep_total, text_rep_total, _, _, \
                 _, _, _, _ = \
-                    eval_retrieval_inbatch_with_rerank(self.blip2qformer, self.val_match_loader, self.device, self.args) ##############################
+                    eval_retrieval_inbatch_with_rerank(self.blip2qformer, self.val_match_loader, self.device, self.args) 
                 self.log("val_inbatch_g2t_acc", g2t_acc, sync_dist=False, on_epoch = True) 
                 self.log("val_inbatch_t2g_acc", t2g_acc, sync_dist=False, on_epoch = True)
                 self.log("val_inbatch_g2t_rec20", g2t_rec20, sync_dist=False, on_epoch = True)
@@ -108,7 +102,7 @@ class Blip2Stage1(pl.LightningModule):
                 g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
                 graph_rep_total, text_rep_total, d2_graph_feat_total, d2_graph_mask_total, \
                 d3_graph_feat_total, d3_graph_mask_total, text_total, text_mask_total = \
-                    eval_retrieval_inbatch_with_rerank(self.blip2qformer, self.test_match_loader, self.device, self.args) #########################
+                    eval_retrieval_inbatch_with_rerank(self.blip2qformer, self.test_match_loader, self.device, self.args) 
                 self.log("rerank_test_inbatch_g2t_acc", g2t_rerank_acc, sync_dist=False, on_epoch = True)
                 self.log("rerank_test_inbatch_t2g_acc", t2g_rerank_acc, sync_dist=False, on_epoch = True)
                 self.log("rerank_test_inbatch_g2t_rec20", g2t_rerank_rec20, sync_dist=False, on_epoch = True)
@@ -138,10 +132,6 @@ class Blip2Stage1(pl.LightningModule):
         self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
 
         batch_size = batch[0][0].size(0)
-        # if self.args.use_3d:
-        #     batch_size = batch[0][0].size(0)
-        # else:
-        #     batch_size = len(batch[0])
         blip2_loss = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
         self.log("train_loss_gtc", float(blip2_loss.loss_itc), batch_size=batch_size, sync_dist=True, on_step = True, on_epoch = True)
@@ -262,8 +252,6 @@ def eval_retrieval_inbatch(model, dataloader, device=None):
         g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
         sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
         t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
-        # argm1 = torch.argmax(sim_g2t, axis=1)
-        # argm2 = torch.argmax(sim_g2t.T, axis=1)
 
         g2t_acc += float((g2t_rank == 0).sum())
         t2g_acc += float((t2g_rank == 0).sum())
@@ -336,133 +324,45 @@ def eval_retrieval_fullset_for_rerank(model, sim_g2t_total, d2_graph_feat_total,
     
     hit_g2t = []
 
-    if args.only_2d:
-
-        for i in tqdm(range(0, N, B), desc='re-ranking g2t'):
-            sim = sim_g2t_total[i:i+B].to(device)
-            rB = sim.shape[0] # real batch size
-            topk_sim, topk_idx = sim.topk(k=rcn, dim=1) # shape = [B, rcn]
-            topk_idx = topk_idx.cpu()
-            d2_graph_feat = d2_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            d2_graph_mask = d2_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            # d3_graph_feat = d3_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            # d3_graph_mask = d3_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            text = text_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
-            text_mask = text_mask_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
-            gtm_sim = model.compute_gtm(d2_graph_feat, d2_graph_mask, None, None, text, text_mask, args).reshape(rB, rcn) ## fixme, using the linear clf's logits directly, without softmax
-            sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            # sorted_ids = torch.argsort(gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            sorted_ids = torch.gather(topk_idx, 1, sorted_ids) # mapping to original ids
-            hit_g2t.append((sorted_ids == torch.arange(i,i+rB).reshape(-1, 1)).int())
-
-    elif args.only_3d:
-        
-        for i in tqdm(range(0, N, B), desc='re-ranking g2t'):
-            sim = sim_g2t_total[i:i+B].to(device)
-            rB = sim.shape[0] # real batch size
-            topk_sim, topk_idx = sim.topk(k=rcn, dim=1) # shape = [B, rcn]
-            topk_idx = topk_idx.cpu()
-            # d2_graph_feat = d2_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            # d2_graph_mask = d2_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            d3_graph_feat = d3_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            d3_graph_mask = d3_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            text = text_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
-            text_mask = text_mask_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
-            gtm_sim = model.compute_gtm(None, None, d3_graph_feat, d3_graph_mask, text, text_mask, args).reshape(rB, rcn) ## fixme, using the linear clf's logits directly, without softmax
-            sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            # sorted_ids = torch.argsort(gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            sorted_ids = torch.gather(topk_idx, 1, sorted_ids) # mapping to original ids
-            hit_g2t.append((sorted_ids == torch.arange(i,i+rB).reshape(-1, 1)).int())
-
-    else:
-
-        for i in tqdm(range(0, N, B), desc='re-ranking g2t'):
-            sim = sim_g2t_total[i:i+B].to(device)
-            rB = sim.shape[0] # real batch size
-            topk_sim, topk_idx = sim.topk(k=rcn, dim=1) # shape = [B, rcn]
-            topk_idx = topk_idx.cpu()
-            d2_graph_feat = d2_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            d2_graph_mask = d2_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            d3_graph_feat = d3_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            d3_graph_mask = d3_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
-            text = text_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
-            text_mask = text_mask_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
-            gtm_sim = model.compute_gtm(d2_graph_feat, d2_graph_mask, d3_graph_feat, d3_graph_mask, text, text_mask, args).reshape(rB, rcn) ## fixme, using the linear clf's logits directly, without softmax
-            sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            # sorted_ids = torch.argsort(gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            sorted_ids = torch.gather(topk_idx, 1, sorted_ids) # mapping to original ids
-            hit_g2t.append((sorted_ids == torch.arange(i,i+rB).reshape(-1, 1)).int())
+    for i in tqdm(range(0, N, B), desc='re-ranking g2t'):
+        sim = sim_g2t_total[i:i+B].to(device)
+        rB = sim.shape[0] # real batch size
+        topk_sim, topk_idx = sim.topk(k=rcn, dim=1) # shape = [B, rcn]
+        topk_idx = topk_idx.cpu()
+        d2_graph_feat = d2_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
+        d2_graph_mask = d2_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
+        d3_graph_feat = d3_graph_feat_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
+        d3_graph_mask = d3_graph_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0) # shape = [B * rcn, num_qs, D]
+        text = text_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
+        text_mask = text_mask_total[topk_idx].flatten(0,1).to(device) # shape = [B * rcn, text_len]
+        gtm_sim = model.compute_gtm(d2_graph_feat, d2_graph_mask, d3_graph_feat, d3_graph_mask, text, text_mask, args).reshape(rB, rcn) ## fixme, using the linear clf's logits directly, without softmax
+        sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
+        sorted_ids = torch.gather(topk_idx, 1, sorted_ids) # mapping to original ids
+        hit_g2t.append((sorted_ids == torch.arange(i,i+rB).reshape(-1, 1)).int())
     
     hit_g2t = torch.cat(hit_g2t, dim=0) # shape = [N, rcn]
-    # g2t_acc = float((hit_g2t[:, 0]).float().mean())
-    # g2t_rec20 = float((hit_g2t[:, :20]).float().sum() / N)
-    # print(g2t_acc, g2t_rec20)
 
     hit_t2g = []
     sim_t2g_total = sim_g2t_total.T
 
-    if args.only_2d:
-            
-        for i in tqdm(range(0, N, B), desc='re-ranking t2g'):
-            sim = sim_t2g_total[i:i+B].to(device)
-            rB = sim.shape[0]
-            topk_sim, topk_idx = sim.topk(k=rcn, dim=1)
-            topk_idx = topk_idx.cpu()
-            text = text_total[i:i+B].to(device).repeat_interleave(rcn, 0)
-            text_mask = text_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0)
-    
-            d2_graph_feat = d2_graph_feat_total[topk_idx].to(device).flatten(0,1)
-            d2_graph_mask = d2_graph_mask_total[topk_idx].to(device).flatten(0,1)
-            # d3_graph_feat = d3_graph_feat_total[topk_idx].to(device).flatten(0,1)
-            # d3_graph_mask = d3_graph_mask_total[topk_idx].to(device).flatten(0,1)
-            gtm_sim = model.compute_gtm(d2_graph_feat, d2_graph_mask, None, None, text, text_mask, args).reshape(rB, rcn)
-    #        gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask).reshape(rB, rcn)
-            sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            sorted_ids = torch.gather(topk_idx, 1, sorted_ids)
-            hit_t2g.append((sorted_ids == torch.arange(i,i+sorted_ids.shape[0]).reshape(-1, 1)).int())
-        hit_t2g = torch.cat(hit_t2g, dim=0)
 
-    elif args.only_3d:
+    for i in tqdm(range(0, N, B), desc='re-ranking t2g'):
+        sim = sim_t2g_total[i:i+B].to(device)
+        rB = sim.shape[0]
+        topk_sim, topk_idx = sim.topk(k=rcn, dim=1)
+        topk_idx = topk_idx.cpu()
+        text = text_total[i:i+B].to(device).repeat_interleave(rcn, 0)
+        text_mask = text_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0)
 
-        for i in tqdm(range(0, N, B), desc='re-ranking t2g'):
-            sim = sim_t2g_total[i:i+B].to(device)
-            rB = sim.shape[0]
-            topk_sim, topk_idx = sim.topk(k=rcn, dim=1)
-            topk_idx = topk_idx.cpu()
-            text = text_total[i:i+B].to(device).repeat_interleave(rcn, 0)
-            text_mask = text_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0)
-    
-            # d2_graph_feat = d2_graph_feat_total[topk_idx].to(device).flatten(0,1)
-            # d2_graph_mask = d2_graph_mask_total[topk_idx].to(device).flatten(0,1)
-            d3_graph_feat = d3_graph_feat_total[topk_idx].to(device).flatten(0,1)
-            d3_graph_mask = d3_graph_mask_total[topk_idx].to(device).flatten(0,1)
-            gtm_sim = model.compute_gtm(None, None, d3_graph_feat, d3_graph_mask, text, text_mask, args).reshape(rB, rcn)
-    #        gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask).reshape(rB, rcn)
-            sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            sorted_ids = torch.gather(topk_idx, 1, sorted_ids)
-            hit_t2g.append((sorted_ids == torch.arange(i,i+sorted_ids.shape[0]).reshape(-1, 1)).int())
-        hit_t2g = torch.cat(hit_t2g, dim=0)
-
-    else:
-
-        for i in tqdm(range(0, N, B), desc='re-ranking t2g'):
-            sim = sim_t2g_total[i:i+B].to(device)
-            rB = sim.shape[0]
-            topk_sim, topk_idx = sim.topk(k=rcn, dim=1)
-            topk_idx = topk_idx.cpu()
-            text = text_total[i:i+B].to(device).repeat_interleave(rcn, 0)
-            text_mask = text_mask_total[i:i+B].to(device).repeat_interleave(rcn, 0)
-    
-            d2_graph_feat = d2_graph_feat_total[topk_idx].to(device).flatten(0,1)
-            d2_graph_mask = d2_graph_mask_total[topk_idx].to(device).flatten(0,1)
-            d3_graph_feat = d3_graph_feat_total[topk_idx].to(device).flatten(0,1)
-            d3_graph_mask = d3_graph_mask_total[topk_idx].to(device).flatten(0,1)
-            gtm_sim = model.compute_gtm(d2_graph_feat, d2_graph_mask, d3_graph_feat, d3_graph_mask, text, text_mask, args).reshape(rB, rcn)
-    #        gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask).reshape(rB, rcn)
-            sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
-            sorted_ids = torch.gather(topk_idx, 1, sorted_ids)
-            hit_t2g.append((sorted_ids == torch.arange(i,i+sorted_ids.shape[0]).reshape(-1, 1)).int())
-        hit_t2g = torch.cat(hit_t2g, dim=0)
+        d2_graph_feat = d2_graph_feat_total[topk_idx].to(device).flatten(0,1)
+        d2_graph_mask = d2_graph_mask_total[topk_idx].to(device).flatten(0,1)
+        d3_graph_feat = d3_graph_feat_total[topk_idx].to(device).flatten(0,1)
+        d3_graph_mask = d3_graph_mask_total[topk_idx].to(device).flatten(0,1)
+        gtm_sim = model.compute_gtm(d2_graph_feat, d2_graph_mask, d3_graph_feat, d3_graph_mask, text, text_mask, args).reshape(rB, rcn)
+        sorted_ids = torch.argsort(topk_sim + gtm_sim, descending=True).cpu() # shape = [B, rcn]
+        sorted_ids = torch.gather(topk_idx, 1, sorted_ids)
+        hit_t2g.append((sorted_ids == torch.arange(i,i+sorted_ids.shape[0]).reshape(-1, 1)).int())
+    hit_t2g = torch.cat(hit_t2g, dim=0)
     
     g2t_acc = float((hit_g2t[:, 0]).float().mean())
     g2t_rec20 = float((hit_g2t[:, :20]).float().sum() / N)
@@ -509,338 +409,102 @@ def eval_retrieval_inbatch_with_rerank(model, dataloader, device=None, args=None
     
     for batch in tqdm(dataloader):
 
-        if args.only_2d:
-                
-            # d3_graph_batch, text_batch, d2_graph_batch = batch
-            _, text_batch, d2_graph_batch = batch
-            #print(smiles_batch)
-            #print(graph_batch)
-            #print(text_batch)
-    
-            text_total.append(text_batch['input_ids'])
-            text_mask_total.append(text_batch['attention_mask'])
-            text_batch = {k: v.to(device) for k, v in text_batch.items()}
-    
-            # d3_graph_batch = tuple(item.to(device) for item in d3_graph_batch)
-            d2_graph_batch = tuple(item.to(device) for item in d2_graph_batch) #######
-            # d3_graph_batch.to(device)
-            # d2_graph_batch.to(device #####
-            # text = text.to(device)
-            # text_mask = text_mask.to(device)
-    
-            # graph_rep, graph_feat, graph_mask = model.graph_forward(graph_batch) # shape = [B, num_qs, D]
-    
-            d2_query, d2_feat, d2_mask = model.graph_forward(d2_graph_batch, is_2d = True)
-            # d3_query, d3_feat, d3_mask = model.graph_forward(d3_graph_batch, is_2d = False)
-    
-    
-            # #### combine query
-    
-            # ####### 240617 kjh ######
-            # if args.agg_method == 'linear_combination':
-            #     combined_query = model.alpha * d2_query.last_hidden_state + (1 - model.alpha) * d3_query.last_hidden_state
-            # elif args.agg_method == 'concat':
-            #     combined_query = torch.cat((d2_query.last_hidden_state, d3_query.last_hidden_state), dim=1)
-            # else:
-            #     raise AggregationMethodError(f"Invalid aggregation method: {args.agg_method}")
-            # ########
-            combined_query = d2_query.last_hidden_state
-                
-            graph_rep = model.graph_proj(combined_query)
-            graph_rep = F.normalize(graph_rep, p=2, dim=-1)
-    
-    
-            text_rep = model.text_forward(text_batch['input_ids'], text_batch['attention_mask']) # shape = [B, D]
-    
-            sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1))
-            sim_q2t = sim_q2t.squeeze(-1) # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
-            sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
-    
-            B = sim_g2t.shape[0] ###240423) changed to debug....just according to printed shape..
-    #        print(sim_g2t.shape)
-            sorted_ids = sim_g2t.argsort(descending=True).cpu()
-            g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1) ).int().argmax(dim=-1)
-            sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
-            t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
-            
-            g2t_acc += float((g2t_rank == 0).sum())
-            t2g_acc += float((t2g_rank == 0).sum())
-            g2t_rec20 += float((g2t_rank < 20).sum())
-            t2g_rec20 += float((t2g_rank < 20).sum())
-    
-            allcnt += B
-    
-            graph_rep_total.append(graph_rep.cpu())
-            text_rep_total.append(text_rep.cpu())
-            d2_graph_feat_total.append(d2_feat.cpu())
-            d2_graph_mask_total.append(d2_mask.cpu())
-            # d3_graph_feat_total.append(d3_feat.cpu())
-            # d3_graph_mask_total.append(d3_mask.cpu())
-    
-            ## reranking
-            input_ids = text_batch['input_ids']
-            attention_mask = text_batch['attention_mask']
-    
-            d2_feat = d2_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
-            d2_mask = d2_mask.repeat_interleave(B, 0)
-            # d3_feat = d3_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
-            # d3_mask = d3_mask.repeat_interleave(B, 0)
-            
-            text = input_ids.repeat(B, 1) # shape = [B * B, text_len]
-            text_mask = attention_mask.repeat(B, 1) # shape = [B * B, text_len]
-    
-            if False:
-                gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask, args).reshape(B, B)
-            else:
-                ## batched reranking
-                batch_size = 64
-                gtm_sim = []
-                for i in range(0, d2_feat.shape[0], batch_size):
-                    # gtm_sim_local = model.compute_gtm(d2_feat[i:i+batch_size], d2_mask[i:i+batch_size], d3_feat[i:i+batch_size], d3_mask[i:i+batch_size],text[i:i+batch_size], text_mask[i:i+batch_size])
-                    gtm_sim_local = model.compute_gtm(d2_feat[i:i+batch_size], d2_mask[i:i+batch_size], None, None,text[i:i+batch_size], text_mask[i:i+batch_size], args)
-                    gtm_sim.append(gtm_sim_local)
-                gtm_sim = torch.cat(gtm_sim, dim=0).reshape(B, B)
-    
-            rerank_sim = sim_g2t + gtm_sim
-    
-            ## g2t rerank
-            sorted_ids = torch.argsort(rerank_sim, descending=True).cpu() # shape = [B, B]
-            hit_g2t = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
-            g2t_rerank_acc += float(hit_g2t[:, 0].sum())
-            g2t_rerank_rec20 += float(hit_g2t[:, :20].sum())
-            
-            ## t2g rerank
-            sorted_ids = torch.argsort(rerank_sim.T, descending=True).cpu() # shape = [B, B]
-            hit_t2g = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
-            t2g_rerank_acc += float(hit_t2g[:, 0].sum())
-            t2g_rerank_rec20 += float(hit_t2g[:, :20].sum())
+        d3_graph_batch, text_batch, d2_graph_batch = batch
 
-        elif args.only_3d:
+        text_total.append(text_batch['input_ids'])
+        text_mask_total.append(text_batch['attention_mask'])
+        text_batch = {k: v.to(device) for k, v in text_batch.items()}
 
-            d3_graph_batch, text_batch, _ = batch
-            # _, text_batch, d2_graph_batch = batch
-            #print(smiles_batch)
-            #print(graph_batch)
-            #print(text_batch)
+        d3_graph_batch = tuple(item.to(device) for item in d3_graph_batch)
+        d2_graph_batch = tuple(item.to(device) for item in d2_graph_batch) #######
+       
+        d2_query, d2_feat, d2_mask = model.graph_forward(d2_graph_batch, is_2d = True)
+        d3_query, d3_feat, d3_mask = model.graph_forward(d3_graph_batch, is_2d = False)
 
-            
-            text_total.append(text_batch['input_ids'])
-            text_mask_total.append(text_batch['attention_mask'])
-            text_batch = {k: v.to(device) for k, v in text_batch.items()}
-    
-            d3_graph_batch = tuple(item.to(device) for item in d3_graph_batch)
-            # d2_graph_batch = tuple(item.to(device) for item in d2_graph_batch) #######
-            # d3_graph_batch.to(device)
-            # d2_graph_batch.to(device #####
-            # text = text.to(device)
-            # text_mask = text_mask.to(device)
-    
-            # graph_rep, graph_feat, graph_mask = model.graph_forward(graph_batch) # shape = [B, num_qs, D]
-    
-            # d2_query, d2_feat, d2_mask = model.graph_forward(d2_graph_batch, is_2d = True)
-            d3_query, d3_feat, d3_mask = model.graph_forward(d3_graph_batch, is_2d = False)
-    
-    
-            # #### combine query
-    
-            # ####### 240617 kjh ######
-            # if args.agg_method == 'linear_combination':
-            #     combined_query = model.alpha * d2_query.last_hidden_state + (1 - model.alpha) * d3_query.last_hidden_state
-            # elif args.agg_method == 'concat':
-            #     combined_query = torch.cat((d2_query.last_hidden_state, d3_query.last_hidden_state), dim=1)
-            # else:
-            #     raise AggregationMethodError(f"Invalid aggregation method: {args.agg_method}")
-            # ########
-            combined_query = d3_query.last_hidden_state
-                
-            graph_rep = model.graph_proj(combined_query)
-            graph_rep = F.normalize(graph_rep, p=2, dim=-1)
-    
-    
-            text_rep = model.text_forward(text_batch['input_ids'], text_batch['attention_mask']) # shape = [B, D]
-    
-            sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1))
-            sim_q2t = sim_q2t.squeeze(-1) # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
-            sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
-    
-            B = sim_g2t.shape[0] ###240423) changed to debug....just according to printed shape..
-    #        print(sim_g2t.shape)
-            sorted_ids = sim_g2t.argsort(descending=True).cpu()
-            g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1) ).int().argmax(dim=-1)
-            sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
-            t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
-            
-            g2t_acc += float((g2t_rank == 0).sum())
-            t2g_acc += float((t2g_rank == 0).sum())
-            g2t_rec20 += float((g2t_rank < 20).sum())
-            t2g_rec20 += float((t2g_rank < 20).sum())
-    
-            allcnt += B
-    
-            graph_rep_total.append(graph_rep.cpu())
-            text_rep_total.append(text_rep.cpu())
-            # d2_graph_feat_total.append(d2_feat.cpu())
-            # d2_graph_mask_total.append(d2_mask.cpu())
-            d3_graph_feat_total.append(d3_feat.cpu())
-            d3_graph_mask_total.append(d3_mask.cpu())
-    
-            ## reranking
-            input_ids = text_batch['input_ids']
-            attention_mask = text_batch['attention_mask']
-    
-            # d2_feat = d2_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
-            # d2_mask = d2_mask.repeat_interleave(B, 0)
-            d3_feat = d3_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
-            d3_mask = d3_mask.repeat_interleave(B, 0)
-            
-            text = input_ids.repeat(B, 1) # shape = [B * B, text_len]
-            text_mask = attention_mask.repeat(B, 1) # shape = [B * B, text_len]
-    
-            if False:
-                gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask, args).reshape(B, B)
-            else:
-                ## batched reranking
-                batch_size = 64
-                gtm_sim = []
-                # for i in range(0, d2_feat.shape[0], batch_size):
-                for i in range(0, d3_feat.shape[0], batch_size):
-                    gtm_sim_local = model.compute_gtm(None, None, d3_feat[i:i+batch_size], d3_mask[i:i+batch_size],text[i:i+batch_size], text_mask[i:i+batch_size], args)
-                    # gtm_sim_local = model.compute_gtm(d2_feat[i:i+batch_size], d2_mask[i:i+batch_size], d3_feat[i:i+batch_size], d3_mask[i:i+batch_size],text[i:i+batch_size], text_mask[i:i+batch_size])
-                    gtm_sim.append(gtm_sim_local)
-                gtm_sim = torch.cat(gtm_sim, dim=0).reshape(B, B)
-    
-            rerank_sim = sim_g2t + gtm_sim
-    
-            ## g2t rerank
-            sorted_ids = torch.argsort(rerank_sim, descending=True).cpu() # shape = [B, B]
-            hit_g2t = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
-            g2t_rerank_acc += float(hit_g2t[:, 0].sum())
-            g2t_rerank_rec20 += float(hit_g2t[:, :20].sum())
-            
-            ## t2g rerank
-            sorted_ids = torch.argsort(rerank_sim.T, descending=True).cpu() # shape = [B, B]
-            hit_t2g = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
-            t2g_rerank_acc += float(hit_t2g[:, 0].sum())
-            t2g_rerank_rec20 += float(hit_t2g[:, :20].sum())
 
-        else:
-
-            d3_graph_batch, text_batch, d2_graph_batch = batch
-            #print(smiles_batch)
-            #print(graph_batch)
-            #print(text_batch)
-    
-            text_total.append(text_batch['input_ids'])
-            text_mask_total.append(text_batch['attention_mask'])
-            text_batch = {k: v.to(device) for k, v in text_batch.items()}
-    
-            d3_graph_batch = tuple(item.to(device) for item in d3_graph_batch)
-            d2_graph_batch = tuple(item.to(device) for item in d2_graph_batch) #######
-            # d3_graph_batch.to(device)
-            # d2_graph_batch.to(device #####
-            # text = text.to(device)
-            # text_mask = text_mask.to(device)
-    
-            # graph_rep, graph_feat, graph_mask = model.graph_forward(graph_batch) # shape = [B, num_qs, D]
-    
-            d2_query, d2_feat, d2_mask = model.graph_forward(d2_graph_batch, is_2d = True)
-            d3_query, d3_feat, d3_mask = model.graph_forward(d3_graph_batch, is_2d = False)
-    
-    
-            #### combine query
-    
-            ####### 240617 kjh ######
+        #### combine query
             if args.agg_method == 'linear_combination':
-                combined_query = model.alpha * d2_query.last_hidden_state + (1 - model.alpha) * d3_query.last_hidden_state
-            elif args.agg_method == 'concat':
-                combined_query = torch.cat((d2_query.last_hidden_state, d3_query.last_hidden_state), dim=1)
-            else:
-                raise AggregationMethodError(f"Invalid aggregation method: {args.agg_method}")
-            ########
-                
-            graph_rep = model.graph_proj(combined_query)
-            graph_rep = F.normalize(graph_rep, p=2, dim=-1)
-    
-    
-            text_rep = model.text_forward(text_batch['input_ids'], text_batch['attention_mask']) # shape = [B, D]
-    
-            sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1))
-            sim_q2t = sim_q2t.squeeze(-1) # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
-            sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
-    
-            B = sim_g2t.shape[0] ###240423) changed to debug....just according to printed shape..
-    #        print(sim_g2t.shape)
-            sorted_ids = sim_g2t.argsort(descending=True).cpu()
-            g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1) ).int().argmax(dim=-1)
-            sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
-            t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+            combined_query = model.alpha * d2_query.last_hidden_state + (1 - model.alpha) * d3_query.last_hidden_state
+        elif args.agg_method == 'concat':
+            combined_query = torch.cat((d2_query.last_hidden_state, d3_query.last_hidden_state), dim=1)
+        else:
+            raise AggregationMethodError(f"Invalid aggregation method: {args.agg_method}")
             
-            g2t_acc += float((g2t_rank == 0).sum())
-            t2g_acc += float((t2g_rank == 0).sum())
-            g2t_rec20 += float((g2t_rank < 20).sum())
-            t2g_rec20 += float((t2g_rank < 20).sum())
-    
-            allcnt += B
-    
-            graph_rep_total.append(graph_rep.cpu())
-            text_rep_total.append(text_rep.cpu())
-            d2_graph_feat_total.append(d2_feat.cpu())
-            d2_graph_mask_total.append(d2_mask.cpu())
-            d3_graph_feat_total.append(d3_feat.cpu())
-            d3_graph_mask_total.append(d3_mask.cpu())
-    
-            ## reranking
-            input_ids = text_batch['input_ids']
-            attention_mask = text_batch['attention_mask']
-    
-            d2_feat = d2_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
-            d2_mask = d2_mask.repeat_interleave(B, 0)
-            d3_feat = d3_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
-            d3_mask = d3_mask.repeat_interleave(B, 0)
-            
-            text = input_ids.repeat(B, 1) # shape = [B * B, text_len]
-            text_mask = attention_mask.repeat(B, 1) # shape = [B * B, text_len]
-    
-            if False:
-                gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask, args).reshape(B, B)
-            else:
-                ## batched reranking
-                batch_size = 64
-                gtm_sim = []
-                for i in range(0, d2_feat.shape[0], batch_size):
-                    gtm_sim_local = model.compute_gtm(d2_feat[i:i+batch_size], d2_mask[i:i+batch_size], d3_feat[i:i+batch_size], d3_mask[i:i+batch_size],text[i:i+batch_size], text_mask[i:i+batch_size], args)
-                    gtm_sim.append(gtm_sim_local)
-                gtm_sim = torch.cat(gtm_sim, dim=0).reshape(B, B)
-    
-            rerank_sim = sim_g2t + gtm_sim
-    
-            ## g2t rerank
-            sorted_ids = torch.argsort(rerank_sim, descending=True).cpu() # shape = [B, B]
-            hit_g2t = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
-            g2t_rerank_acc += float(hit_g2t[:, 0].sum())
-            g2t_rerank_rec20 += float(hit_g2t[:, :20].sum())
-            
-            ## t2g rerank
-            sorted_ids = torch.argsort(rerank_sim.T, descending=True).cpu() # shape = [B, B]
-            hit_t2g = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
-            t2g_rerank_acc += float(hit_t2g[:, 0].sum())
-            t2g_rerank_rec20 += float(hit_t2g[:, :20].sum())
+        graph_rep = model.graph_proj(combined_query)
+        graph_rep = F.normalize(graph_rep, p=2, dim=-1)
+
+
+        text_rep = model.text_forward(text_batch['input_ids'], text_batch['attention_mask']) # shape = [B, D]
+
+        sim_q2t = (graph_rep.unsqueeze(1) @ text_rep.unsqueeze(-1))
+        sim_q2t = sim_q2t.squeeze(-1) # shape = [B, 1, num_qs, D]; shape = [B, D, 1]; output shape = [B, B, num_qs]
+        sim_g2t, _ = sim_q2t.max(-1) # shape = [B, B]
+
+        B = sim_g2t.shape[0] 
+        sorted_ids = sim_g2t.argsort(descending=True).cpu()
+        g2t_rank = (sorted_ids == torch.arange(B).reshape(-1, 1) ).int().argmax(dim=-1)
+        sorted_ids = sim_g2t.T.argsort(descending=True).cpu()
+        t2g_rank = (sorted_ids == torch.arange(B).reshape(-1, 1)).int().argmax(dim=-1)
+        
+        g2t_acc += float((g2t_rank == 0).sum())
+        t2g_acc += float((t2g_rank == 0).sum())
+        g2t_rec20 += float((g2t_rank < 20).sum())
+        t2g_rec20 += float((t2g_rank < 20).sum())
+
+        allcnt += B
+
+        graph_rep_total.append(graph_rep.cpu())
+        text_rep_total.append(text_rep.cpu())
+        d2_graph_feat_total.append(d2_feat.cpu())
+        d2_graph_mask_total.append(d2_mask.cpu())
+        d3_graph_feat_total.append(d3_feat.cpu())
+        d3_graph_mask_total.append(d3_mask.cpu())
+
+        ## reranking
+        input_ids = text_batch['input_ids']
+        attention_mask = text_batch['attention_mask']
+
+        d2_feat = d2_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
+        d2_mask = d2_mask.repeat_interleave(B, 0)
+        d3_feat = d3_feat.repeat_interleave(B, 0) # shape = [B * B, N, D]
+        d3_mask = d3_mask.repeat_interleave(B, 0)
+        
+        text = input_ids.repeat(B, 1) # shape = [B * B, text_len]
+        text_mask = attention_mask.repeat(B, 1) # shape = [B * B, text_len]
+
+        if False:
+            gtm_sim = model.compute_gtm(graph_feat, graph_mask, text, text_mask, args).reshape(B, B)
+        else:
+            ## batched reranking
+            batch_size = 64
+            gtm_sim = []
+            for i in range(0, d2_feat.shape[0], batch_size):
+                gtm_sim_local = model.compute_gtm(d2_feat[i:i+batch_size], d2_mask[i:i+batch_size], d3_feat[i:i+batch_size], d3_mask[i:i+batch_size],text[i:i+batch_size], text_mask[i:i+batch_size], args)
+                gtm_sim.append(gtm_sim_local)
+            gtm_sim = torch.cat(gtm_sim, dim=0).reshape(B, B)
+
+        rerank_sim = sim_g2t + gtm_sim
+
+        ## g2t rerank
+        sorted_ids = torch.argsort(rerank_sim, descending=True).cpu() # shape = [B, B]
+        hit_g2t = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
+        g2t_rerank_acc += float(hit_g2t[:, 0].sum())
+        g2t_rerank_rec20 += float(hit_g2t[:, :20].sum())
+        
+        ## t2g rerank
+        sorted_ids = torch.argsort(rerank_sim.T, descending=True).cpu() # shape = [B, B]
+        hit_t2g = (sorted_ids == torch.arange(B).reshape(-1, 1)).float()
+        t2g_rerank_acc += float(hit_t2g[:, 0].sum())
+        t2g_rerank_rec20 += float(hit_t2g[:, :20].sum())
     
     graph_rep_total = torch.cat(graph_rep_total, dim=0)
     text_rep_total = torch.cat(text_rep_total, dim=0)
 
-    if args.only_2d:
-        d2_graph_feat_total = pad_and_concat(d2_graph_feat_total)
-        d2_graph_mask_total = pad_and_concat(d2_graph_mask_total)
-    elif args.only_3d:
-        d3_graph_feat_total = pad_and_concat(d3_graph_feat_total)
-        d3_graph_mask_total = pad_and_concat(d3_graph_mask_total)
-    else:
-        d2_graph_feat_total = pad_and_concat(d2_graph_feat_total)
-        d2_graph_mask_total = pad_and_concat(d2_graph_mask_total)
-        d3_graph_feat_total = pad_and_concat(d3_graph_feat_total)
-        d3_graph_mask_total = pad_and_concat(d3_graph_mask_total)
-        
+    d2_graph_feat_total = pad_and_concat(d2_graph_feat_total)
+    d2_graph_mask_total = pad_and_concat(d2_graph_mask_total)
+    d3_graph_feat_total = pad_and_concat(d3_graph_feat_total)
+    d3_graph_mask_total = pad_and_concat(d3_graph_mask_total)
+    
     text_total = torch.cat(text_total, dim=0)
     text_mask_total = torch.cat(text_mask_total, dim=0)
 
@@ -855,19 +519,8 @@ def eval_retrieval_inbatch_with_rerank(model, dataloader, device=None, args=None
     t2g_rerank_rec20 = round(t2g_rerank_rec20 / allcnt * 100, 2)
 
 
-    if args.only_2d:
-        return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
-            g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
-            graph_rep_total, text_rep_total, d2_graph_feat_total, d2_graph_mask_total,\
-            None, None, text_total, text_mask_total
-    elif args.only_3d:
-        return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
-            g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
-            graph_rep_total, text_rep_total, None, None,\
-            d3_graph_feat_total, d3_graph_mask_total, text_total, text_mask_total
-
-    else:
-        return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
-            g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
-            graph_rep_total, text_rep_total, d2_graph_feat_total, d2_graph_mask_total,\
-            d3_graph_feat_total, d3_graph_mask_total, text_total, text_mask_total
+    
+    return g2t_acc, t2g_acc, g2t_rec20, t2g_rec20, \
+        g2t_rerank_acc, t2g_rerank_acc, g2t_rerank_rec20, t2g_rerank_rec20, \
+        graph_rep_total, text_rep_total, d2_graph_feat_total, d2_graph_mask_total,\
+        d3_graph_feat_total, d3_graph_mask_total, text_total, text_mask_total
