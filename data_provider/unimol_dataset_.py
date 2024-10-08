@@ -121,16 +121,6 @@ class D3Dataset_cid(Dataset):
         if self.normalize_coords:
             coordinates = coordinates - coordinates.mean(axis=0)
 
-        # if self.add_special_token:
-        #     atom_vec = torch.cat([torch.LongTensor([self.bos]), atom_vec, torch.LongTensor([self.eos])])
-        #     coordinates = np.concatenate([np.zeros((1, 3)), coordinates, np.zeros((1, 3))], axis=0)
-
-        # ## obtain edge types; which is defined as the combination of two atom types
-        # edge_type = atom_vec.view(-1, 1) * self.num_types + atom_vec.view(1, -1)
-        # dist = distance_matrix(coordinates, coordinates).astype(np.float32)
-        # coordinates, dist_3d = torch.from_numpy(coordinates), torch.from_numpy(dist)
-
-
         if self.add_special_token:
             atom_vec_3d = torch.cat([torch.LongTensor([self.bos]), atom_vec, torch.LongTensor([self.eos])])
             coordinates_3d = np.concatenate([np.zeros((1, 3)), coordinates, np.zeros((1, 3))], axis=0)
@@ -268,15 +258,6 @@ class D3Dataset_index(Dataset):
         if self.normalize_coords:
             coordinates = coordinates - coordinates.mean(axis=0)
 
-        # if self.add_special_token:
-        #     atom_vec = torch.cat([torch.LongTensor([self.bos]), atom_vec, torch.LongTensor([self.eos])])
-        #     coordinates = np.concatenate([np.zeros((1, 3)), coordinates, np.zeros((1, 3))], axis=0)
-
-        # ## obtain edge types; which is defined as the combination of two atom types
-        # edge_type = atom_vec.view(-1, 1) * self.num_types + atom_vec.view(1, -1)
-        # dist = distance_matrix(coordinates, coordinates).astype(np.float32)
-        # coordinates, dist_3d = torch.from_numpy(coordinates), torch.from_numpy(dist)
-
         if self.add_special_token:
             atom_vec_3d = torch.cat([torch.LongTensor([self.bos]), atom_vec, torch.LongTensor([self.eos])])
             coordinates_3d = np.concatenate([np.zeros((1, 3)), coordinates, np.zeros((1, 3))], axis=0)
@@ -354,43 +335,10 @@ class D3Collater:
         return padded_atom_vec, padded_coordinates, padded_edge_type, padded_dist, smiles
 
 def load_data_from_pt(data_smiles, add_dummy_node=True, one_hot_formal_charge=True, use_data_saving=False):
-    """Load and featurize data stored in a CSV file.
-
-    Args:
-        dataset_path (str): A path to the CSV file containing the data. It should have two columns:
-                            the first one contains SMILES strings of the compounds,
-                            the second one contains labels.
-        add_dummy_node (bool): If True, a dummy node will be added to the molecular graph. Defaults to True.
-        one_hot_formal_charge (bool): If True, formal charges on atoms are one-hot encoded. Defaults to False.
-        use_data_saving (bool): If True, saved features will be loaded from the dataset directory; if no feature file
-                                is present, the features will be saved after calculations. Defaults to True.
-
-    Returns:
-        A tuple (X, y) in which X is a list of graph descriptors (node features, adjacency matrices, distance matrices),
-        and y is a list of the corresponding labels.
-    """
     feat_stamp = f'{"_dn" if add_dummy_node else ""}{"_ohfc" if one_hot_formal_charge else ""}'
-
-
-    # data_df = pd.read_csv(dataset_path)
-    # data_smiles = [pre_data['smiles'] for pre_data in tqdm(pt_dataset)]
-
-    # data_x = data_df.iloc[:, 0].values
-    # data_y = data_df.iloc[:, 1].values
-
-    # if data_y.dtype == np.float64:
-    #     data_y = data_y.astype(np.float32)
-
-    # x_all, y_all = load_data_from_smiles(data_x, data_y, add_dummy_node=add_dummy_node,
-    #                                      one_hot_formal_charge=one_hot_formal_charge)
 
     x_all = load_data_from_smiles(data_smiles, add_dummy_node=add_dummy_node,
                                          one_hot_formal_charge=one_hot_formal_charge)
-    
-    # if use_data_saving and not os.path.exists(feature_path):
-    #     logging.info(f"Saving features at '{feature_path}'")
-    #     pickle.dump((x_all, y_all), open(feature_path, "wb"))
-
     return x_all
 
 
@@ -408,27 +356,13 @@ def load_data_from_smiles(x_smiles, add_dummy_node=True, one_hot_formal_charge=T
         A tuple (X, y) in which X is a list of graph descriptors (node features, adjacency matrices, distance matrices),
         and y is a list of the corresponding labels.
     """
-    # x_all, y_all = [], []
     x_all = []
 
-    # for smiles, label in zip(x_smiles, labels):
-    # for smiles in tqdm(x_smiles):
     for smiles in x_smiles:
         try:
             mol = MolFromSmiles(smiles)
-        #     try:
-        #         mol = Chem.AddHs(mol)
-        #         AllChem.EmbedMolecule(mol, maxAttempts=5000)
-        #         AllChem.UFFOptimizeMolecule(mol)
-        #         mol = Chem.RemoveHs(mol)
-        #     except:
-        #         AllChem.Compute2DCoords(mol)
-
-            # afm, adj, dist = featurize_mol(mol, add_dummy_node, one_hot_formal_charge)
-            # x_all.append([afm, adj, dist])
             afm, adj = featurize_mol(mol, add_dummy_node, one_hot_formal_charge)
             x_all.append([afm, adj])
-            # y_all.append([label])
         except ValueError as e:
             logging.warning('the SMILES ({}) can not be converted to a graph.\nREASON: {}'.format(smiles, e))
 
@@ -454,20 +388,6 @@ def featurize_mol(mol, add_dummy_node, one_hot_formal_charge):
         end_atom = bond.GetEndAtom().GetIdx()
         adj_matrix[begin_atom, end_atom] = adj_matrix[end_atom, begin_atom] = 1
 
-    # conf = mol.GetConformer()
-    # pos_matrix = np.array([[conf.GetAtomPosition(k).x, conf.GetAtomPosition(k).y, conf.GetAtomPosition(k).z]
-    #                        for k in range(mol.GetNumAtoms())])
-    # dist_matrix = pairwise_distances(pos_matrix)
-
-    # m = np.zeros((node_features.shape[0], node_features.shape[1] + 1))
-    # # m = np.full((node_features.shape[0], node_features.shape[1] + 1), 0.5)
-    # m[:, 1:] = node_features
-    # m[0, 0] = 1.
-    # node_features = m
-
-    # m = np.zeros((adj_matrix.shape[0] + 1, adj_matrix.shape[1] + 1))
-    # m[1:, 1:] = adj_matrix
-    # adj_matrix = m
 
     if add_dummy_node:
         m = np.zeros((node_features.shape[0] + 1, node_features.shape[1] + 1))
@@ -479,11 +399,6 @@ def featurize_mol(mol, add_dummy_node, one_hot_formal_charge):
         m[1:, 1:] = adj_matrix
         adj_matrix = m
 
-    #     # m = np.full((dist_matrix.shape[0] + 1, dist_matrix.shape[1] + 1), 1e6)
-    #     # m[1:, 1:] = dist_matrix
-    #     # dist_matrix = m
-
-    # return node_features, adj_matrix, dist_matrix
     return node_features, adj_matrix
 
 def get_atom_features(atom, one_hot_formal_charge=True):
@@ -531,16 +446,4 @@ def one_hot_vector(val, lst):
     if val not in lst:
         val = lst[-1]
     return map(lambda x: x == val, lst)
-
-
-if __name__ == '__main__':
-    from unicore.data import Dictionary
-    from torch.utils.data import DataLoader
-    # split_path = os.path.join(self.args.data, self.args.task_name, split + ".lmdb")
-    path = '/data/lish/3D-MoLM/MolChat/data/mola-d-v2/molecule3d_database.lmdb'
-    dictionary = Dictionary.load('/data/lish/zyliu/MolChat/data_provider/unimol_dict.txt')
-    dictionary.add_symbol("[MASK]", is_special=True)
-    dataset = D3Dataset_cid(path, dictionary, 256)
-    pass
-
 
