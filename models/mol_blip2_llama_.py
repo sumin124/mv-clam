@@ -57,7 +57,7 @@ class MolBlip2Llama(MolBlip2Base):
             logging.info("freeze graph encoder")
         self.alpha = nn.Parameter(torch.tensor(0.5))
 
-     self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, 1024, 512, cross_attention_freq) #### d2_graph_encoder.num_features 대신 값 고정 : 512
+     self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, 1024, 512, cross_attention_freq) 
 
         self.Qformer.cls = None
         self.Qformer.bert.embeddings.word_embeddings = None
