@@ -44,11 +44,7 @@ class Blip2Stage2(pl.LightningModule):
             args.do_sample = False
         self.caption_eval_epoch = args.caption_eval_epoch
         self.llm_tune = args.llm_tune
-        
-        # print('args.num_query_token:',args.num_query_token) ################################################
-        # args.num_query_token = 12 ################################################
-        # print('args.num_query_token:',args.num_query_token) ################################################
-        
+                
         self.blip2opt = MolBlip2Llama(args.bert_name,
                                    args.tune_gnn,
                                    args.num_query_token,
@@ -64,11 +60,10 @@ class Blip2Stage2(pl.LightningModule):
 
     def load_from_stage1_checkpoint(self, path):
         print('loading from stage1 checkpoint')
-        print('load_from_stage1_checkpoint_path: ', path) ##############################
+        print('load_from_stage1_checkpoint_path: ', path) 
         ckpt = torch.load(path, map_location='cpu')
         state_dict = ckpt['state_dict']
         state_dict = {k.split('blip2qformer.')[1]: v for k, v in state_dict.items()} 
-        # state_dict = {'blip2opt.'+k.split('blip2qformer.')[1]: v for k, v in state_dict.items()} ##############################
 
         missing_keys, unexpected_keys = self.blip2opt.load_state_dict(state_dict, strict=False)
         print('missing keys')
@@ -95,9 +90,6 @@ class Blip2Stage2(pl.LightningModule):
         if self.enable_flash:
             replace_llama_attn_with_flash_attn()
 
-    # def on_train_epoch_start(self) -> None:
-    #     if self.enable_flash:
-    #         replace_flash_attn_with_llama_attn()
 
     def on_validation_epoch_start(self) -> None:
         if self.enable_flash:
@@ -189,42 +181,24 @@ class Blip2Stage2(pl.LightningModule):
             self.log("rouge_2", rouge_2, sync_dist=False)
             self.log("rouge_l", rouge_l, sync_dist=False)
             self.log("meteor_score", meteor_score, sync_dist=False)
-
-        ####### for single gpu ####### -> 240529_sm
-        # self.save_predictions(predictions, targets)
-        # bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-        #     caption_evaluate(predictions, targets, self.tokenizer, self.args.max_new_tokens)
-        # self.log("bleu2", bleu2, sync_dist=False)
-        # self.log("bleu4", bleu4, sync_dist=False)
-        # self.log("rouge_1", rouge_1, sync_dist=False)
-        # self.log("rouge_2", rouge_2, sync_dist=False)
-        # self.log("rouge_l", rouge_l, sync_dist=False)
-        # self.log("meteor_score", meteor_score, sync_dist=False)
         
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("GINSimclr")
         # train mode
-        # GIN
-        parser.add_argument('--gin_hidden_dim', type=int, default=512)
-        parser.add_argument('--gin_num_layers', type=int, default=5)
-        parser.add_argument('--drop_ratio', type=float, default=0.0)
         parser.add_argument('--tune_gnn', action='store_true', default=False)
         # Bert
         parser.add_argument('--bert_hidden_dim', type=int, default=768, help='')
         parser.add_argument('--bert_name', type=str, default='scibert')
         parser.add_argument('--cross_attention_freq', type=int, default=2)
         parser.add_argument('--num_query_token', type=int, default=8)
-        # OPT
-        # parser.add_argument('--llm_model', type=str, default="/data/project/kjh/3d-MoLM/all_checkpoints/llama-2-7b-hf") ################
+        # lm
         parser.add_argument('--llm_model', type=str, default="baffo32/decapoda-research-llama-7B-hf") 
         parser.add_argument('--num_beams', type=int, default=5)
         parser.add_argument('--do_sample', action='store_true', default=False)
-        # parser.add_argument('--max_len', type=int, default=128)
         parser.add_argument('--max_len', type=int, default=600)
         parser.add_argument('--min_len', type=int, default=32)
-        # parser.add_argument('--max_new_tokens', type=int, default=128)
         parser.add_argument('--max_new_tokens', type=int, default=600)
         parser.add_argument('--min_new_tokens', type=int, default=32)
         parser.add_argument('--length_penalty', type=float, default=0.8)
@@ -238,7 +212,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 
         ## lora config
-        parser.add_argument('--lora_r', type=int, default=16) ##################### default 8 -> 16 kjh 230606 ####
+        parser.add_argument('--lora_r', type=int, default=8) 
         parser.add_argument('--lora_alpha', type=int, default=32)
         parser.add_argument('--lora_dropout', type=int, default=0.1)
 
