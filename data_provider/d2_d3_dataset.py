@@ -78,7 +78,6 @@ class pt_dataset_smiles: ## for lm24 dataset (NO cid numbers)
         self.db_path = db_path
         assert os.path.isfile(self.db_path), "{} not found".format(self.db_path)
         env = self.connect_db(self.db_path)
-        # self.cids = [env[i][0] for i in range(len(env))]
         self.smiles = [env[i][2] for i in range(len(env))]
 
     def connect_db(self, pt_path, save_to_self=False):
@@ -91,7 +90,6 @@ class pt_dataset_smiles: ## for lm24 dataset (NO cid numbers)
             self.env = env
 
     def __len__(self):
-        # return len(self.cids)
         return len(self.smiles)
 
     @lru_cache(maxsize=16)
@@ -152,17 +150,12 @@ class pt_dataset(Dataset):
         data = self.pk_3d_dataset[idx]
         smiles = data[2]
 
-        if self.enriched_description == True: ##############################
+        if self.enriched_description == True: 
             description = data[8]
         else:
             description = data[1]
-        ## deal with 3d coordinates
-        # atoms_orig = np.array(data[3]) ######### 기존 : atom 원자 불러와서 원자 번호로 변환 -> 처음부터 원자 번호 (atom vec)
-        # atoms = atoms_orig.copy()
         atom_vec = np.array(data[3])
         
-        # coordinate_set = data[6]
-        # coordinates = random.sample(coordinate_set, 1)[0].astype(np.float32)
         coordinates = data[6]
         
         assert len(atom_vec) == len(coordinates) and len(atom_vec) > 0
@@ -183,14 +176,12 @@ class pt_dataset(Dataset):
 
         if self.add_special_token:
             atom_vec = torch.cat([torch.LongTensor([self.bos]), atom_vec, torch.LongTensor([self.eos])])
-            # coordinates = np.concatenate([np.zeros((1, 3)), coordinates, np.zeros((1, 3))], axis=0)
             coordinates = np.concatenate([np.zeros((1, 3)), coordinates.float() , np.zeros((1, 3))], axis=0)
 
         ## obtain edge types; which is defined as the combination of two atom types
         edge_type = atom_vec.view(-1, 1) * self.num_types + atom_vec.view(1, -1)
         dist = distance_matrix(coordinates, coordinates).astype(np.float32)
         coordinates, dist = torch.from_numpy(coordinates), torch.from_numpy(dist)
-        # return atom_vec, coordinates, edge_type, dist, smiles, description, enriched_description
         return atom_vec, coordinates, edge_type, dist, smiles, description, data[7]
         
 class pt_MolDataset(Dataset):
@@ -203,18 +194,16 @@ class pt_MolDataset(Dataset):
         self.tokenizer = tokenizer
         self.lm24 = lm24
         
-        self.enriched_description = enriched_description #########
+        self.enriched_description = enriched_description 
 
         self.root = root
         self.text_max_len = text_max_len
         
         target_path = root
-        # target_path = os.path.join(root, '3d-dataset_toy.pt')
-        # target_path = os.path.join(root, '3d-dataset.pt')
         if 'PubChem' in root: 
             target_path = os.path.join(root, 'pubchem_2d_3d.pt') 
         if 'lm24' in root:
-            target_path = os.path.join(root, 'lm24_2d_3d.pt') ##########
+            target_path = os.path.join(root, 'lm24_2d_3d.pt') 
 
         print(f'Read from {target_path}') 
         
@@ -238,10 +227,8 @@ class pt_MolDataset(Dataset):
 
         if self.return_prompt:
 
-            smiles_prompt = self.prompt.format(smiles[:96]) #### 96??
+            smiles_prompt = self.prompt.format(smiles[:96]) 
             return (atom_vec, coordinates, edge_type, dist, smiles), d2_graph, smiles_prompt, description, index
-
-#        return (atom_vec, coordinates, edge_type, dist, smiles), d2_graph, self.tokenizer_text(description)
         return (atom_vec, coordinates, edge_type, dist, smiles), d2_graph, description
 
 
@@ -292,12 +279,12 @@ class pubchem_to_2d_3d(Dataset):
                 self.dists.append(dist)
                 self.edge_types.append(edge_type)
                 self.coordinates.append(coordinate)
-                self.texts.append(description) ### with molecular name ([Molecule name] is...)
+                self.texts.append(description) 
                 self.enriched_texts.append(enriched_description)
     
                 self.d2_graphs.append(Data(pt_dataset[append_index].x, pt_dataset[append_index].edge_index, pt_dataset[append_index].edge_attr))
                 
-                self.cids.append(self.cids_init[append_index]) ####
+                self.cids.append(self.cids_init[append_index]) 
                 self.texts_molca.append(self.texts_init[append_index]) #### ### without molecular name (The molecule...)
                 self.smiles.append(smile) ####
     
@@ -321,7 +308,6 @@ class pubchem_to_2d_3d(Dataset):
             coordinates = mol.GetConformer().GetPositions()
 
         except:
-            # res = AllChem.EmbedMolecule(mol, useRandomCoords=True) ########################################################
             res = AllChem.Compute2dCoords(mol)
             
             
@@ -353,10 +339,6 @@ class pubchem_to_2d_3d(Dataset):
         return self.cids[idx], self.texts[idx], self.smiles[idx], self.atom_vecs[idx], self.dists[idx], self.edge_types[idx], self.coordinates[idx], self.d2_graphs[idx], self.enriched_texts[idx], self.texts_molca[idx]
 
 
-
-
-        
-##############################
 
 class lm24_to_2d_3d_split_merge(Dataset):
 
@@ -404,7 +386,6 @@ class lm24_to_2d_3d_split_merge(Dataset):
 
         
         return self.cids[idx], self.texts[idx], self.smiles[idx], self.atom_vecs[idx], self.dists[idx], self.edge_types[idx], self.coordinates[idx], self.d2_graphs[idx], self.enriched_texts[idx], self.texts_molca[idx]
-        # return self.texts[idx], self.smiles[idx], self.atom_vecs[idx], self.dists[idx], self.edge_types[idx], self.coordinates[idx], self.d2_graphs[idx]
 
 
 
@@ -457,7 +438,6 @@ class pickle_to_2d_3d(Dataset):
             
 
         except:
-            # res = AllChem.EmbedMolecule(mol, useRandomCoords=True) ########################################################
             res = AllChem.Compute2dCoords(mol)
             
             
@@ -465,8 +445,6 @@ class pickle_to_2d_3d(Dataset):
 
         assert len(atoms) == len(coordinates), "coordinates shape is not align with {}".format(smiles)
         assert coordinates.shape[1] == 3
-        
-        #atoms = np.asarray(atoms)
         
         ## atom vectors
         dictionary = Dictionary.load('/data/project/sumin/moleculeText/3D-MoLM/data_provider/unimol_dict.txt')
@@ -627,41 +605,25 @@ class TrainCollater:
         padded_edge_type = data_utils.collate_tokens_2d(edge_type, 0, left_pad=False, pad_to_multiple=self.pad_to_multiple) # shape = [batch_size, max_atoms, max_atoms]
         padded_dist = data_utils.collate_tokens_2d(dist, 0, left_pad=False, pad_to_multiple=self.pad_to_multiple) # shape = [batch_size, max_atoms, max_atoms]
 
-#        print(f'length of batch, text, smiles_prompt: {len(batch)}\n')
-#        print(len(batch), len(text_batch), len(smiles_prompt))
-        #print(len(smiles_prompt))
         input_pair = [[p,t] for p, t in zip(smiles_prompt, text_batch)]
-        #print(f'length of input_pair: {len(input_pair)}\n')
-#        print()
-#        print(input_pair[0])
         self.tokenizer.padding_side = 'left'
         text_smiles_tokens = self.tokenizer(input_pair,
-                                            # stage 1 일 때는 truncation = True, stage 2 일 때는 only_second ??
-                                            # truncation=True, ###################################################
-                                            truncation='only_second', ###################################################
+                                            truncation='only_second', 
                                             padding='max_length',
                                             add_special_tokens=True,
                                             max_length=self.text_max_len,
                                             return_tensors='pt',
                                             return_attention_mask=True, 
                                             return_token_type_ids=True)
-       # print(f'length of tokenized input pair: {len(text_smiles_tokens)}\n')
         is_mol_token = (text_smiles_tokens.input_ids == self.mol_token_id)
-#        print(f' is_mol_token: {torch.sum(is_mol_token).item()}')
-#        print(f'batch: {8 * len(batch)}')
-        
-        # assert torch.sum(is_mol_token).item() == 8 * len(batch)#, print(input_pair) ###################################
+
         try:
-            assert torch.sum(is_mol_token).item() == 12 * len(batch)#, print(input_pair) ###################################
+            assert torch.sum(is_mol_token).item() == 12 * len(batch)
         except:
-            # assert torch.sum(is_mol_token).item() == self.num_tokens * len(batch)#, print(input_pair) ###################################
-            assert torch.sum(is_mol_token).item() == 24 * len(batch)#, print(input_pair) ###################################
+            assert torch.sum(is_mol_token).item() == 24 * len(batch)
 
         text_smiles_tokens['is_mol_token'] = is_mol_token
-        #print('is_mol_token', (torch.sum(is_mol_token).item()))
-
-        # d2_batch = Batch.from_data_list(d2_batch)
-        d2_batch = self.d2_graph_encoder_batch(*d2_batch) ###########
+        d2_batch = self.d2_graph_encoder_batch(*d2_batch) 
         
 
         return (padded_atom_vec, padded_dist, padded_edge_type), text_smiles_tokens, d2_batch
@@ -711,14 +673,13 @@ class InferenceCollater:
         self.mol_token_id = mol_token_id
         self.pad_to_multiple = pad_to_multiple
         
-        self.num_tokens = num_tokens ######## 
+        self.num_tokens = num_tokens  
 
 
     def __call__(self, batch):
         d3_batch, d2_batch, smiles_prompt, text_batch, indices= zip(*batch)
         atom_vec, coordinates, edge_type, dist, smiles = zip(*d3_batch)
         padded_atom_vec = data_utils.collate_tokens(atom_vec, self.pad_idx, left_pad=False, pad_to_multiple=self.pad_to_multiple) # shape = [batch_size, max_atoms]
-        #padded_coordinates = self.collate_tokens_coords(coordinates, 0, left_pad=False, pad_to_multiple=self.pad_to_multiple) # shape = [batch_size, max_atoms, 3]
         padded_edge_type = data_utils.collate_tokens_2d(edge_type, 0, left_pad=False, pad_to_multiple=self.pad_to_multiple) # shape = [batch_size, max_atoms, max_atoms]
         padded_dist = data_utils.collate_tokens_2d(dist, 0, left_pad=False, pad_to_multiple=self.pad_to_multiple) # shape = [batch_size, max_atoms, max_atoms]
         
@@ -735,7 +696,6 @@ class InferenceCollater:
         text_smiles_tokens['is_mol_token'] = is_mol_token
         target_dict = {'targets': text_batch, 'indices': indices}
 
-        # d2_batch = Batch.from_data_list(d2_batch)
         d2_batch = self.d2_graph_encoder_batch(*d2_batch) ###########
 
 
