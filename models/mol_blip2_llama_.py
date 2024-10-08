@@ -10,14 +10,8 @@ import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from peft import get_peft_config, get_peft_model, get_peft_model_state_dict, LoraConfig, TaskType, PeftModel
 
-# from lavis.models.blip2_models.blip2 import (
-#     # Blip2Base,
-#     disabled_train,
-# )
 from model.mol_blip2_ import MolBlip2Base
-# from transformers import LlamaTokenizer
 from transformers import AutoTokenizer
-# from model.modeling_llama import LlamaForCausalLM
 from transformers import LlamaForCausalLM
 
 
@@ -42,7 +36,6 @@ class MolBlip2Llama(MolBlip2Base):
         num_query_token=32,
         cross_attention_freq=2,
         llm_tuning='full',
-        # llm_model="decapoda-research/llama-7b-hf",
         llm_model = "baffo32/decapoda-research-llama-7B-hf",
         args=None,
     ):
@@ -51,8 +44,7 @@ class MolBlip2Llama(MolBlip2Base):
         self.args = args
 
         self.unimol_encoder, self.ln_unimol, self.dictionary = self.init_3d_graph_encoder(args)
-        # self.d2_graph_encoder, self.ln_d2_graph = self.init_2d_graph_encoder(args, gin_num_layers, gin_hidden_dim, gin_drop_ratio) ###need to add 2d gnn specific arguments
-        self.d2_graph_encoder, self.ln_d2_graph = self.init_2d_graph_encoder() ###need to add 2d gnn specific arguments
+        self.d2_graph_encoder, self.ln_d2_graph = self.init_2d_graph_encoder() 
 
         self.tune_gnn = tune_gnn
         if not tune_gnn:
@@ -65,14 +57,8 @@ class MolBlip2Llama(MolBlip2Base):
             logging.info("freeze graph encoder")
         self.alpha = nn.Parameter(torch.tensor(0.5))
 
-        # print('num_query_token:', num_query_token) ############################ 12
+     self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, 1024, 512, cross_attention_freq) #### d2_graph_encoder.num_features 대신 값 고정 : 512
 
-        # self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.d2_graph_encoder.num_features, cross_attention_freq)
-        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, 1024, 512, cross_attention_freq) #### d2_graph_encoder.num_features 대신 값 고정 : 512
-
-        # print('self.query_tokens.shape:', self.query_tokens.shape) ############################ 1,12,768
-
-        ### remove the unused parameters
         self.Qformer.cls = None
         self.Qformer.bert.embeddings.word_embeddings = None
         self.Qformer.bert.embeddings.position_embeddings = None
@@ -81,26 +67,20 @@ class MolBlip2Llama(MolBlip2Base):
             layer.intermediate = None
 
         ## initialize opt model
-        # self.llm_tokenizer = AutoTokenizer.from_pretrained(llm_model, use_fast=False, padding_side='right')
         self.llm_tokenizer = AutoTokenizer.from_pretrained(llm_model, 
-                                                           # unk_token='</s>',
-                                                           # bos_token='</s>',
-                                                           # eos_token='</s>',
                                                            use_fast=False,
-                                                           padding_side='right') ######################################################
+                                                           padding_side='right') 
         self.llm_tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-        self.llm_tokenizer.add_special_tokens({'bos_token': '</s>'}) ######################################################
-        self.llm_tokenizer.add_special_tokens({'eos_token': '</s>'}) ######################################################
-        self.llm_tokenizer.add_special_tokens({'unk_token': '</s>'}) ######################################################
+        self.llm_tokenizer.add_special_tokens({'bos_token': '</s>'}) 
+        self.llm_tokenizer.add_special_tokens({'eos_token': '</s>'}) 
+        self.llm_tokenizer.add_special_tokens({'unk_token': '</s>'}) 
         self.llm_tokenizer.add_special_tokens({'additional_special_tokens': ['<mol>']})
         self.llm_tokenizer.mol_token_id = self.llm_tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
         if args.enable_flash:
             self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.bfloat16)
-            # print('attn_implementation=NONE') ########################################
         else:
             self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2")
-            # print('attn_implementation=flash_attention_2') ########################################
         self.llm_model.resize_token_embeddings(len(self.llm_tokenizer))
         
         self.llm_tuning = llm_tuning
@@ -139,10 +119,7 @@ class MolBlip2Llama(MolBlip2Base):
         d3_batch, text_batch, d2_batch = batch
 
         batch_node_3d, batch_mask_3d = self.unimol_encoder(d3_batch[0], d3_batch[1], d3_batch[2])
-        # batch_node_2d, batch_mask_2d = self.d2_graph_encoder(d2_batch)
-        # print(d2_batch[1]) #####
         batch_mask_2d = torch.sum(torch.abs(d2_batch[1]), dim=-1) != 0
-        # batch_node_2d = self.d2_graph_encoder(*d2_batch) #######
         batch_node_2d, _ = self.d2_graph_encoder(d2_batch[0], batch_mask_2d, d2_batch[1], d2_batch[2], None) # output : embedding / src_mask
         
         if not self.tune_gnn:
@@ -152,7 +129,6 @@ class MolBlip2Llama(MolBlip2Base):
         batch_size = batch_node_2d.shape[0]
         batch_node_3d = self.ln_unimol(batch_node_3d)
 
-#        batch_node_2d = self.lin_proj_2d(batch_node_2d)
         batch_node_2d = self.ln_d2_graph(batch_node_2d)
 
         query_tokens = self.query_tokens.expand(batch_size, -1, -1)
@@ -175,10 +151,6 @@ class MolBlip2Llama(MolBlip2Base):
 
         query_output_2d_3d = {}
 
-        ######### linear combination
-        # query_output_2d_3d['last_hidden_state'] = self.alpha * query_output_2d.last_hidden_state + (1 - self.alpha) * query_output_3d.last_hidden_state 
-
-        ######### concatenation
         query_output_2d_3d['last_hidden_state'] = torch.cat((query_output_2d.last_hidden_state, query_output_3d.last_hidden_state), dim=1)
         
         query_output = self.llm_proj(query_output_2d_3d['last_hidden_state']) #[batch_size,num_query_token,dim]
@@ -191,16 +163,6 @@ class MolBlip2Llama(MolBlip2Base):
         inputs_embeds = self.llm_model.get_input_embeddings()(text_batch.input_ids) # [batch_size, max_len, dim]
         inputs_embeds[text_batch.is_mol_token] = query_output.flatten(0, 1) # [batch_size, max_len, dim]
 
-        ###############################################################
-        # print('target:',targets)
-        # print('targets nan values:', torch.isnan(targets).sum().item())
-        # print('targets NOT 100 values:', (targets != -100.0).sum().item())
-        # print('input_embeds:',inputs_embeds)
-        # print('input_embeds nan values:', torch.isnan(inputs_embeds).sum().item())
-
-        ###############################################################
-        # print('input_embeds.shape:',inputs_embeds.shape) ###############################################################
-
 
         outputs = self.llm_model(
             inputs_embeds=inputs_embeds,
@@ -210,14 +172,6 @@ class MolBlip2Llama(MolBlip2Base):
             use_cache=False,
         )
 
-        ###############################################################
-        # print('outputs:',outputs)
-        # # print('outputs nan values:',torch.isnan(outputs).sum().item())
-
-        # import sys 
-        # sys.exit()
-        
-        ###############################################################
         loss = outputs.loss
         return {"loss": loss}
 
@@ -254,10 +208,8 @@ class MolBlip2Llama(MolBlip2Base):
         
         batch_node_3d, batch_mask_3d = self.unimol_encoder(d3_graph_batch[0], d3_graph_batch[1], d3_graph_batch[2])
         batch_mask_2d = torch.sum(torch.abs(d2_graph_batch[1]), dim=-1) != 0
-        # batch_node_2d = self.d2_graph_encoder(*d2_batch) #######
         batch_node_2d, _ = self.d2_graph_encoder(d2_graph_batch[0], batch_mask_2d, d2_graph_batch[1], d2_graph_batch[2], None) # output : embedding / src_mask
 
-#        batch_node_2d, batch_mask_2d = self.d2_graph_encoder(d2_graph_batch)
         if not self.tune_gnn:
             batch_node_3d = batch_node_3d.detach()
             batch_node_2d = batch_node_2d.detach()
@@ -286,10 +238,6 @@ class MolBlip2Llama(MolBlip2Base):
 
         query_output_2d_3d = {}
         
-        ####### linear combination #####
-        # query_output_2d_3d['last_hidden_state'] = self.alpha * query_output_2d.last_hidden_state + (1 - self.alpha) * query_output_3d.last_hidden_state
-        
-        ######### concatenation #######
         query_output_2d_3d['last_hidden_state'] = torch.cat((query_output_2d.last_hidden_state, query_output_3d.last_hidden_state), dim=1)
         
 
@@ -303,7 +251,6 @@ class MolBlip2Llama(MolBlip2Base):
             do_sample=do_sample,
             num_beams=num_beams,
             max_length=max_length,
-            # min_length=min_length,
             max_new_tokens=max_new_tokens,
             min_new_tokens=min_new_tokens,
             pad_token_id=self.pad_token_id,
