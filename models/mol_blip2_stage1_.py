@@ -29,7 +29,7 @@ class Blip2Stage1(pl.LightningModule):
         
         self.args = args
         self.rerank_cand_num = args.rerank_cand_num
-        self.blip2qformer = MolBlip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args)
+        self.blip2qformer = MolBlip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim, args)
     
         self.save_hyperparameters(args)
     
