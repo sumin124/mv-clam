@@ -1289,8 +1289,7 @@ class MolBlip2Base(BaseModel):
         Qformer = BertLMHeadModel.from_pretrained(
             bert_name, config=encoder_config
         )
-        # Qformer.load_state_dict(torch.load('./ckpts/d2_d3_scibert_modified.pt', map_location=torch.device('cpu'))) ##########
-        Qformer.load_state_dict(torch.load('/data/project/sumin/moleculeText/molMDiGL/ckpts/d2_d3_diff_emb_scibert.pt', map_location=torch.device('cpu')))
+        Qformer.load_state_dict(torch.load('./ckpts/d2_d3_diff_emb_scibert.pt', map_location=torch.device('cpu')))
         print('Qformer loaded_original MAT, Uni-Mol: d2_d3_diff_emb_scibert.pt')
 
         
@@ -1303,47 +1302,22 @@ class MolBlip2Base(BaseModel):
 
     @classmethod
     def init_3d_graph_encoder(self, args):
-        dictionary = Dictionary.load('/data2/project/sumin/mv-clam/data_provider/unimol_dict.txt') ########################
-        # dictionary = Dictionary.load('../data_provider/unimol_dict.txt') ########################
+        dictionary = Dictionary.load('./data_provider/unimol_dict.txt') 
         dictionary.add_symbol("[MASK]", is_special=True)
         unimol_model = SimpleUniMolModel(args, dictionary)
-        ckpt = torch.load('/data/project/kjh/3d-MoLM/all_checkpoints/uni-mol/mol_pre_no_h_220816.pt', map_location=torch.device('cpu'))['model']
+        ckpt = torch.load('./all_checkpoints/uni-mol/mol_pre_no_h_220816.pt', map_location=torch.device('cpu'))['model']
         missing_keys, unexpected_keys = unimol_model.load_state_dict(ckpt, strict=False)
         if len(missing_keys) or len(unexpected_keys):
-            print('3d graph encoder missing keys:',missing_keys) #############################################
-            print('3d graph encoder unexpected keys:',unexpected_keys) #############################################
+            print('3d graph encoder missing keys:',missing_keys) 
+            print('3d graph encoder unexpected keys:',unexpected_keys) 
         
         ln_graph = nn.LayerNorm(unimol_model.num_features)
         return unimol_model, ln_graph, dictionary
     
-    # @classmethod
-    # def init_2d_graph_encoder(self, args, gin_num_layers, gin_hidden_dim, gin_drop_ratio):
-    #     graph_encoder = GNN(
-    #         num_layer=gin_num_layers,
-    #         emb_dim=gin_hidden_dim,
-    #         gnn_type='gin',
-    #         drop_ratio=gin_drop_ratio,
-    #         JK='last',
-    #     )
-
-    #     # graphmvp_encoder = GraphMVP(args = args, num_tasks=1, molecule_model = graph_encoder)
-
-    #     # graphmvp_encoder.from_pretrained('/data/project/sumin/moleculeText/3D-MoLM/ckpts/graphMVP/pretraining_model.pth')
-    #     # print(graphmvp_encoder.emb_dim)
-    #     # ln_graph = nn.LayerNorm(graphmvp_encoder.emb_dim)
-    #     ln_graph = nn.LayerNorm(gin_hidden_dim)
-
-    #     return graph_encoder, ln_graph
-
     
     @classmethod
     def init_2d_graph_encoder(self):
 
-
-        # current_pwd = os.getcwd()
-        # os.chdir('/home/kjh/kjh_dir/MAT/src')
-
-        # print(os.system('pwd'))
         from featurization_mat.data_utils import load_data_from_df, construct_loader
         from featurization_mat.transformer import make_model
         
@@ -1365,7 +1339,7 @@ class MolBlip2Base(BaseModel):
         
         graph_encoder = make_model(**model_params)
         
-        pretrained_name = '/home/kjh/kjh_dir/MAT/pretrained_weights.pt'  # This file should be downloaded first (See README.md).
+        pretrained_name = './MAT/pretrained_weights.pt'  # This file should be downloaded first (See README.md).
         pretrained_state_dict = torch.load(pretrained_name)
 
         model_state_dict = graph_encoder.state_dict()
@@ -1376,9 +1350,8 @@ class MolBlip2Base(BaseModel):
                 param = param.data
             model_state_dict[name].copy_(param)
 
-        # os.chdir(current_pwd)
 
-        ln_graph = nn.LayerNorm(1024) # Input dimension for MQ-former
+        ln_graph = nn.LayerNorm(1024) 
 
         return graph_encoder, ln_graph
 
