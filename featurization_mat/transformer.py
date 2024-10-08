@@ -7,8 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-#from utils import xavier_normal_small_init_, xavier_uniform_small_init_
-
 
 ### Model definition
 
@@ -52,7 +50,6 @@ class GraphTransformer(nn.Module):
         
     def forward(self, src, src_mask, adj_matrix, distances_matrix, edges_att):
         "Take in and process masked src and target sequences."
-        # return self.predict(self.encode(src, src_mask, adj_matrix, distances_matrix, edges_att), src_mask)
         return self.encode(src, src_mask, adj_matrix, distances_matrix, edges_att), src_mask
 
     def encode(self, src, src_mask, adj_matrix, distances_matrix, edges_att):
