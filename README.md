@@ -28,7 +28,7 @@ conda env create -f mvclam.yaml
 
   ## Stage 1 Train
   ```
-  python mol_stage1.py --num_query_token 12 --warmup_steps 200 --filename stage1_train --seed 42--max_epochs 10 --mode train --stage1_path stage1_pretrain_output_ckpt
+  python mol_stage1.py --num_query_token 12 --warmup_steps 200 --filename stage1_train --seed 42--max_epochs 10 --mode ft --stage1_path stage1_pretrain_output_ckpt
   ```
   Furthre train MQ-Former on a PubChem train dataset.
 
@@ -36,13 +36,13 @@ conda env create -f mvclam.yaml
 
   ## Stage 2 Pretrain
   ```
-  python mol_stage2.py --num_query_token 12 --warmup_steps 200 --filename stage2_pretrain --seed 42--max_epochs 10 --mode pretrain --stage1_path stage1_train_output_ckpt
+  python mol_stage2.py --num_query_token 12 --warmup_steps 200 --filename stage2_pretrain --seed 42--max_epochs 10 --mode pretrain --lora_r 8 --stage1_path stage1_train_output_ckpt
   ```
   Fine-tunes the pretrained MQ-Former and LLaMA2 model using the PubChem pretrain dataset for molecule captioning.
 
   ## Stage 2 Train
   ```
-  python mol_stage2.py --num_query_token 12 --warmup_steps 200 --filename stage2_train --seed 42--max_epochs 10 --mode train --stage2_path stage2_pretrain_output_ckpt
+  python mol_stage2.py --num_query_token 12 --warmup_steps 200 --filename stage2_train --seed 42--max_epochs 10 --mode ft --stage2_path stage2_pretrain_output_ckpt
   ```
   Further train MQ-Former and LLaMA2 model using the PubChem train dataset.
 
