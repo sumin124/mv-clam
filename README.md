@@ -44,7 +44,6 @@ conda env create -f mvclam.yaml
   ```
   python mol_stage2.py --num_query_token 12 --warmup_steps 200 --filename stage2_train --seed 42--max_epochs 10 --mode train --stage2_path stage2_pretrain_output_ckpt
   ```
-  Pretrains MQ-Former on a PubChem Pretrain dataset to initialize its ability to align 2D and 3D molecular representations with textual data.
-
+  Further train MQ-Former and LLaMA2 model using the PubChem train dataset.
 
 
