@@ -1,9 +1,3 @@
-"""
- Copyright (c) 2023, salesforce.com, inc.
- All rights reserved.
- SPDX-License-Identifier: BSD-3-Clause
- For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
-"""
 import logging
 import torch
 import torch.nn as nn
@@ -44,7 +38,7 @@ class MolBlip2Llama(MolBlip2Base):
         self.args = args
 
         self.unimol_encoder, self.ln_unimol, self.dictionary = self.init_3d_graph_encoder(args)
-        self.d2_graph_encoder, self.ln_d2_graph = self.init_2d_graph_encoder() 
+        self.d2_graph_encoder, self.ln_d2_graph = self.init_2d_graph_encoder() ###need to add 2d gnn specific arguments
 
         self.tune_gnn = tune_gnn
         if not tune_gnn:
@@ -57,8 +51,10 @@ class MolBlip2Llama(MolBlip2Base):
             logging.info("freeze graph encoder")
         self.alpha = nn.Parameter(torch.tensor(0.5))
 
-     self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, 1024, 512, cross_attention_freq) 
+        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, 1024, 512, cross_attention_freq) #### d2_graph_encoder.num_features 대신 값 고정 : 512
 
+
+        ### remove the unused parameters
         self.Qformer.cls = None
         self.Qformer.bert.embeddings.word_embeddings = None
         self.Qformer.bert.embeddings.position_embeddings = None
@@ -144,25 +140,27 @@ class MolBlip2Llama(MolBlip2Base):
         query_output_3d = self.Qformer.bert(
             query_embeds=query_tokens,
             encoder_hidden_states=batch_node_3d,
-            encoder_attention_mask=batch_mask_3d, # fixme: check whether this mask is correct
+            encoder_attention_mask=batch_mask_3d, 
             return_dict=True,
             is_2d=False,
         )
 
         query_output_2d_3d = {}
 
+        ######### concatenation
         query_output_2d_3d['last_hidden_state'] = torch.cat((query_output_2d.last_hidden_state, query_output_3d.last_hidden_state), dim=1)
         
         query_output = self.llm_proj(query_output_2d_3d['last_hidden_state']) #[batch_size,num_query_token,dim]
 
         targets = text_batch.input_ids.masked_fill(
             text_batch.input_ids == self.llm_tokenizer.pad_token_id, -100
-        ) # [batch_size, max_len]
+        ) 
         targets = targets.masked_fill(text_batch.token_type_ids == 0, -100)
 
         inputs_embeds = self.llm_model.get_input_embeddings()(text_batch.input_ids) # [batch_size, max_len, dim]
         inputs_embeds[text_batch.is_mol_token] = query_output.flatten(0, 1) # [batch_size, max_len, dim]
 
+       
 
         outputs = self.llm_model(
             inputs_embeds=inputs_embeds,
@@ -237,7 +235,6 @@ class MolBlip2Llama(MolBlip2Base):
         )
 
         query_output_2d_3d = {}
-        
         query_output_2d_3d['last_hidden_state'] = torch.cat((query_output_2d.last_hidden_state, query_output_3d.last_hidden_state), dim=1)
         
 
@@ -251,6 +248,7 @@ class MolBlip2Llama(MolBlip2Base):
             do_sample=do_sample,
             num_beams=num_beams,
             max_length=max_length,
+            # min_length=min_length,
             max_new_tokens=max_new_tokens,
             min_new_tokens=min_new_tokens,
             pad_token_id=self.pad_token_id,
