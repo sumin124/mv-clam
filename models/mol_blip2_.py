@@ -1,13 +1,8 @@
 """
+Modified code based on 
  * Copyright (c) 2023, salesforce.com, inc.
- * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
- * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
- * By Junnan Li
- * Based on huggingface code base
- * https://github.com/huggingface/transformers/blob/v4.15.0/src/transformers/models/bert
 """
-
 import math
 import os
 import warnings
@@ -60,8 +55,6 @@ class BertEmbeddings(nn.Module):
             config.max_position_embeddings, config.hidden_size
         )
 
-        # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
-        # any TensorFlow checkpoint file
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -93,8 +86,6 @@ class BertEmbeddings(nn.Module):
             ].clone()
 
         if input_ids is not None:
-            # print(self.word_embeddings)
-            # print(self.config.vocab_size, self.config.hidden_size, input_ids.shape)
             embeddings = self.word_embeddings(input_ids)
             if self.position_embedding_type == "absolute":
                 position_embeddings = self.position_embeddings(position_ids)
@@ -420,8 +411,6 @@ class BertLayer(nn.Module):
         is_2d = True,
         query_length=0,
     ):
-#        print(f'Going through layer number: {self.layer_num} {self.attention}')
-        # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         self_attn_past_key_value = (
             past_key_value[:2] if past_key_value is not None else None
         )
@@ -808,11 +797,6 @@ class BertModel(BertPreTrainedModel):
                 )
             )
 
-        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-        # masked positions, this operation will create a tensor which is 0.0 for
-        # positions we want to attend and -10000.0 for masked positions.
-        # Since we are adding it to the raw scores before the softmax, this is
-        # effectively the same as removing these entirely.
         extended_attention_mask = extended_attention_mask.to(
             dtype=self.dtype
         )  # fp16 compatibility
@@ -899,9 +883,6 @@ class BertModel(BertPreTrainedModel):
             attention_mask = torch.ones(
                 ((batch_size, seq_length + past_key_values_length)), device=device
             )
-
-        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
-        # ourselves in which case we just need to make it broadcastable to all heads.
         if is_decoder:
             extended_attention_mask = self.get_extended_attention_mask(
                 attention_mask,
@@ -911,17 +892,9 @@ class BertModel(BertPreTrainedModel):
                 has_query=(query_embeds is not None),
             )
         else:
-            #print('***********check attention_mask for qformer.bert (m-t contrasting/matching)***********')
-            #print(attention_mask.shape) #torch.Size([batch_size, num_query])
-#            print(attention_mask)
             extended_attention_mask = self.get_extended_attention_mask(
                 attention_mask, input_shape, device, is_decoder
             )
-            # print(extended_attention_mask) 
-            # print(extended_attention_mask.shape) #torch.Size([batch_size, 1, 1, num_query])
-
-        # If a 2D or 3D attention mask is provided for the cross-attention
-        # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if encoder_hidden_states is not None:
             if type(encoder_hidden_states) == list:
                 encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[
@@ -951,11 +924,6 @@ class BertModel(BertPreTrainedModel):
         else:
             encoder_extended_attention_mask = None
 
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape bsz x n_heads x N x N
-        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
-        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
         encoder_outputs = self.encoder(
@@ -1289,7 +1257,7 @@ class MolBlip2Base(BaseModel):
         Qformer = BertLMHeadModel.from_pretrained(
             bert_name, config=encoder_config
         )
-        Qformer.load_state_dict(torch.load('./ckpts/d2_d3_diff_emb_scibert.pt', map_location=torch.device('cpu')))
+        Qformer.load_state_dict(torch.load('/ckpts/d2_d3_diff_emb_scibert.pt', map_location=torch.device('cpu')))
         print('Qformer loaded_original MAT, Uni-Mol: d2_d3_diff_emb_scibert.pt')
 
         
@@ -1302,14 +1270,15 @@ class MolBlip2Base(BaseModel):
 
     @classmethod
     def init_3d_graph_encoder(self, args):
-        dictionary = Dictionary.load('./data_provider/unimol_dict.txt') 
+        dictionary = Dictionary.load('/data2/project/mv-clam/data_provider/unimol_dict.txt') ########################
+        # dictionary = Dictionary.load('../data_provider/unimol_dict.txt') ########################
         dictionary.add_symbol("[MASK]", is_special=True)
         unimol_model = SimpleUniMolModel(args, dictionary)
-        ckpt = torch.load('./all_checkpoints/uni-mol/mol_pre_no_h_220816.pt', map_location=torch.device('cpu'))['model']
+        ckpt = torch.load('/3d-MoLM/all_checkpoints/uni-mol/mol_pre_no_h_220816.pt', map_location=torch.device('cpu'))['model']
         missing_keys, unexpected_keys = unimol_model.load_state_dict(ckpt, strict=False)
         if len(missing_keys) or len(unexpected_keys):
-            print('3d graph encoder missing keys:',missing_keys) 
-            print('3d graph encoder unexpected keys:',unexpected_keys) 
+            print('3d graph encoder missing keys:',missing_keys) #############################################
+            print('3d graph encoder unexpected keys:',unexpected_keys) #############################################
         
         ln_graph = nn.LayerNorm(unimol_model.num_features)
         return unimol_model, ln_graph, dictionary
@@ -1317,12 +1286,10 @@ class MolBlip2Base(BaseModel):
     
     @classmethod
     def init_2d_graph_encoder(self):
-
         from featurization_mat.data_utils import load_data_from_df, construct_loader
         from featurization_mat.transformer import make_model
         
         model_params = {
-            # 'd_atom': d_atom,
             'd_atom': 28,
             'd_model': 1024,
             'N': 8,
@@ -1339,7 +1306,7 @@ class MolBlip2Base(BaseModel):
         
         graph_encoder = make_model(**model_params)
         
-        pretrained_name = './MAT/pretrained_weights.pt'  # This file should be downloaded first (See README.md).
+        pretrained_name = '/MAT/pretrained_weights.pt'  # This file should be downloaded first (See README.md).
         pretrained_state_dict = torch.load(pretrained_name)
 
         model_state_dict = graph_encoder.state_dict()
@@ -1351,7 +1318,7 @@ class MolBlip2Base(BaseModel):
             model_state_dict[name].copy_(param)
 
 
-        ln_graph = nn.LayerNorm(1024) 
+        ln_graph = nn.LayerNorm(1024) # Input dimension for MQ-former
 
         return graph_encoder, ln_graph
 
